@@ -4,29 +4,30 @@ apply plugin: 'kotlin-android'
 
 apply plugin: 'kotlin-android-extensions'
 
+apply plugin: 'io.fabric'
+
 android {
     compileSdkVersion 28
+
+    signingConfigs {
+
+        beta {
+            def properties = getSigningProperties('beta.signing.properties')
+            keyAlias properties['keyAlias']
+            keyPassword properties['keyPassword']
+            storeFile file(properties['storeFile'])
+            storePassword properties['storePassword']
+        }
+
+    }
 
     defaultConfig {
         applicationId "com.hack.max.landmark"
         minSdkVersion 21
         targetSdkVersion 28
-        versionCode 1
-        versionName "1.0"
+        versionCode readVersionCode()
+        versionName readVersionName()
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
-    }
-
-    buildTypes {
-
-        debug {
-            applicationIdSuffix ".debug"
-            debuggable true
-        }
-
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-        }
     }
 
     // Defines the environment we are working on
@@ -43,6 +44,22 @@ android {
             dimension "environment"
         }
     }
+
+    buildTypes {
+
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+        }
+
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            productFlavors.stage.signingConfig signingConfigs.beta
+            productFlavors.production.signingConfig signingConfigs.beta
+        }
+    }
+
 }
 
 dependencies {
@@ -50,7 +67,139 @@ dependencies {
     implementation"org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation 'com.android.support:appcompat-v7:28.0.0'
     implementation 'com.android.support.constraint:constraint-layout:1.1.3'
+
     testImplementation 'junit:junit:4.12'
+
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+
+    api('com.crashlytics.sdk.android:crashlytics:2.9.6@aar') {
+        transitive = true
+    }
+}
+
+def getSigningProperties(def filepath) {
+    if (!filepath) {
+        throw new GradleException("Signing properties filepath cannot be empty.")
+    }
+    def keystorePropertiesFile = project.file(filepath)
+    def keystoreProperties = new Properties()
+    def stream
+    try {
+        stream = new FileInputStream(keystorePropertiesFile)
+        keystoreProperties.load(stream)
+    } catch(FileNotFoundException ignore) {
+        throw new GradleException("Signing properties file not found.")
+    }
+    assert keystoreProperties['keyAlias'] != null
+    assert keystoreProperties['keyPassword'] != null
+    assert keystoreProperties['storeFile'] != null
+    assert keystoreProperties['storePassword'] != null
+
+    return keystoreProperties
+}
+
+def readVersion() {
+    def versionFile = rootProject.file('version.properties')
+    def version = new Properties()
+    def stream
+    try {
+        stream = new FileInputStream(versionFile)
+        version.load(stream)
+    } catch (FileNotFoundException ignore) {
+    } finally {
+        if (stream != null) stream.close()
+    }
+    if (!version['major']) version['major'] = "1"
+    if (!version['minor']) version['minor'] = "0"
+    if (!version['fix']) version['fix'] = "0"
+    if (!version['code']) version['code'] = "0"
+    return version
+}
+
+def readVersionName() {
+    def version = readVersion()
+    return "${version['major']}.${version['minor']}.${version['fix']}"
+}
+
+def readVersionCode() {
+    def version = readVersion()
+    def code = version['code'] as int
+    return code
+}
+
+def incrementVersionNumber(def type = "code") {
+    def versionFile = rootProject.file('version.properties')
+
+    def version = readVersion()
+
+    def major = version['major'] as int
+    def minor = version['minor'] as int
+    def fix = version['fix'] as int
+    def code = version['code'] as int
+
+    if (type == 'major') {
+        major++
+        minor = 0
+        fix = 0
+    } else if (type == 'minor') {
+        minor++
+        fix = 0
+    }else if (type == 'fix') {
+        fix++
+    }
+
+    code++
+
+    version['major'] = major.toString()
+    version['minor'] = minor.toString()
+    version['fix'] = fix.toString()
+    version['code'] = code.toString()
+
+    def stream = new FileOutputStream(versionFile)
+    try {
+        version.store(stream, null)
+    } finally {
+        stream.close()
+    }
+    println "Version after increment"
+    println "> versionName: " + readVersionName()
+    println "> versionCode: " + readVersionCode()
+
+    return major + "." + minor
+}
+
+task doMajorVersionIncrement {
+    doLast {
+        println "Incrementing major version..."
+        incrementVersionNumber('major')
+    }
+}
+
+task doMinorVersionIncrement {
+    doLast {
+        println "Incrementing minor version..."
+        incrementVersionNumber('minor')
+    }
+}
+
+task doFixVersionIncrement {
+    doLast {
+        println "Incrementing fix version..."
+        incrementVersionNumber('fix')
+    }
+}
+
+task doBuildNumberIncrement {
+    doLast {
+        println "Incrementing build number..."
+        incrementVersionNumber('code')
+    }
+}
+
+task readSigning() {
+    doLast {
+        println "Reading signing properties"
+        getSigningProperties('stage.signing.properties')
+    }
 }
